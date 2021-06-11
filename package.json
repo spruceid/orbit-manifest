@@ -6,8 +6,10 @@
   "devDependencies": {
     "ganache-cli": "6.12.0-tezos.0"
   },
+  "main": "dist/tzprofiles.js",
+  "types": "dist/tzprofiles.d.ts",
   "scripts": {
-    "start-sandbox": "ganache-cli --flavor tezos --seed alice"
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
     "type": "git",
@@ -20,9 +22,21 @@
     "kepler"
   ],
   "author": "Charles Cunningham <charles.cunningham@spruceid.com>",
-  "license": "MIT",
   "bugs": {
     "url": "https://github.com/spruceid/orbit-manifest/issues"
   },
-  "homepage": "https://github.com/spruceid/orbit-manifest#readme"
+  "homepage": "https://github.com/spruceid/orbit-manifest#readme",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@taquito/beacon-wallet": "^8.1.0",
+    "@taquito/rpc": "^8.1.0",
+    "@taquito/signer": "^8.1.0",
+    "@taquito/taquito": "^8.1.0",
+    "@taquito/tzip16": "^8.1.0",
+    "axios": "^0.21.1",
+    "didkit-wasm-node": "^0.1.0",
+    "express": "^4.17.1",
+    "process": "^0.11.10",
+    "yargs": "^16.2.0"
+  }
 }
