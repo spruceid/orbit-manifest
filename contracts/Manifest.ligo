@@ -27,7 +27,7 @@ function update_hosts (const o : storage; const u : host_update) : storage is
   if u.insert then Orbit.set_hosts (o, u.hosts) else Orbit.remove_hosts (o, u.hosts)
 
 function main (const a : action ; const s : storage) : return is
-  if s.admins contains Tezos.source then
+   if Big_map.find_opt(Tezos.source, s.admins) = Some(Unit) then
     ((nil : list(operation)),
       case a of
       | UpdateAdmins (n) -> update_admins (s, n)

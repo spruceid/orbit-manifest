@@ -1,27 +1,25 @@
-function addr_add (const s : set (address); const e : address) : set (address) is Set.add (e, s)
-
-function addr_remove (const s : set (address); const e : address) : set (address) is Set.remove (e, s)
-
-function addr_union (const s1 : set (address); const s2 : set (address)) : set (address) is
-  // probably more optimal to use patch, but for some reason couldnt get the syntax to work
-  Set.fold (addr_add, s1, s2)
-
-function addr_relative_complement (const s1 : set (address); const s2 : set (address)) : set (address) is
-  Set.fold (addr_remove, s1, s2)
-
 type host_big_map is big_map (string, set (string))
 type host_map is map (string, set (string))
+type admin_set is big_map (address, unit)
 
 type state is record
-  admins: set (address);
+  admins: admin_set;
   hosts: host_big_map;
 end
 
-function add_admins (const o : state; const a : set (address)) : state is
-  o with record [admins = addr_union (a, o.admins)]
+function add_admins (const o : state; const admins : set (address)) : state is
+  o with record [admins = Set.fold(
+    (function (const acc : admin_set; const a : address ) : admin_set is Big_map.update(a, Some (Unit), acc)),
+    admins,
+    o.admins
+  )]
 
-function remove_admins (const o : state; const a : set (address)) : state is
-  o with record [admins = addr_relative_complement (o.admins, a)]
+function remove_admins (const o : state; const admins : set (address)) : state is
+  o with record [admins = Set.fold(
+    (function (const acc : admin_set; const a : address ) : admin_set is Big_map.update(a, (None : option (unit)), acc)),
+    admins,
+    o.admins
+  )]
 
 function set_hosts (const o : state; const hosts : host_map) : state is
   o with record[hosts = Map.fold(
