@@ -1,19 +1,21 @@
 
-type host_map is big_map (string, set (string))
+type host_big_map is big_map (string, set (string))
+type host_map is map (string, set (string))
 
 type orbit is record
      admins: set (address);
-     hosts: host_map;
+     hosts: host_big_map;
 end
 
 type admin_update is record
      admins: set (address);
-     insert: boolean;
+     insert: bool;
 end
 
 type host_update is record
-     hosts: set (string * set (string));
-     insert: boolean;
+     // we must use a non-bigmap here so we can iterate over it
+     hosts: host_map;
+     insert: bool;
 end
 
 // variant defining pseudo multi-entrypoint actions
@@ -40,27 +42,38 @@ function add_admins (const a : set (address); const o : orbit) : orbit is
 function remove_admins (const a : set (address); const o : orbit) : orbit is
   o with record [admins = addr_relative_complement (o.admins, a)]
 
-function set_hosts (var o : orbit; const hosts : host_map) : orbit is
-  o with record [hosts = block { patch o.hosts with hosts } with o.hosts ]
+function set_hosts (const o : orbit; const hosts : host_map) : orbit is
+  o with record[hosts = Map.fold(
+    // asign the kv pair to orbit hosts
+    (function (const acc : host_big_map; const h : string * set (string)) : host_big_map is Big_map.update(h.0, Some (h.1), acc)),
+    // iter with
+    hosts,
+    // start with existing hosts
+    o.hosts
+  )]
 
-function remove_hosts (var o : orbit; const hosts : set (string)) : orbit is
-  block {
-    function remove (const i : string) : unit is remove i from map o.hosts;
-    Map.iter (remove, hosts)
-  } with o
+function remove_hosts (const o : orbit; const hosts : host_map) : orbit is
+  o with record[hosts = Map.fold(
+    // remove the kv pair from orbit hosts
+    (function (const acc : host_big_map; const h : string * set (string)) : host_big_map is Big_map.update(h.0, (None : option (set (string))), acc)),
+    // iter with
+    hosts,
+    // start with existing hosts
+    o.hosts
+  )]
 
 function update_admins (const o : orbit; const u : admin_update) : orbit is
   if u.insert then add_admins(u.admins, o) else remove_admins(u.admins, o)
 
-function update_hosts (var o : orbit, const u : host_update) : orbit is
+function update_hosts (const o : orbit; const u : host_update) : orbit is
   if u.insert then set_hosts (o, u.hosts) else remove_hosts (o, u.hosts)
 
 function main (const a : action ; const s : orbit) : return is
   if s.admins contains Tezos.source then
     ((nil : list(operation)),
       case a of
-      | UpdateAdmins (n) -> add_admin (n, s)
-      | UpdateHosts (n) -> add_host (n, s)
+      | UpdateAdmins (n) -> update_admins (s, n)
+      | UpdateHosts (n) -> update_hosts (s, n)
     end)
   else
     failwith("Access Denied, source is not admin")
