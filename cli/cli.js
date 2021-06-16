@@ -1,8 +1,7 @@
-const lib = require('../dist/tzprofiles');
+const lib = require('../dist/contractClient');
 const crypto = require('crypto');
 const fs = require('fs');
 const yargs = require('yargs');
-const kepler = require('kepler-sdk');
 const DIDKit = require('didkit-wasm-node');
 
 const hashFunc = async (claimBody) => {
@@ -11,80 +10,62 @@ const hashFunc = async (claimBody) => {
 
 const argv = yargs
 	.command('originate', 'Deploy Tezos Public Profiles smart contract.', {
-		claims: {
-			description: 'Comma seperated list of urls to claims',
+		admins: {
+			description: 'Comma seperated list of initial orbit admins',
+			type: 'array',
+			demand: false,
+			default: [],
+		},
+		hosts: {
+			description: 'Comma seperated list of initial orbit hosts',
 			type: 'array',
 			demand: false,
 			default: [],
 		}
 	})
-	.command('add-claims', 'Add a claim.',
+	.command('add-hosts', 'Add hosts.',
 		{
-			contract: {
-				description: 'TZP address.',
-				type: 'string',
-				demand: true,
-			},
-			claims: {
-				description: 'Comma seperated list of urls to claims',
+			hosts: {
+				description: 'Comma seperated list of hosts IDs',
 				type: 'array',
 				demand: true,
 			}
 		}
 	)
-	.command('remove-claims', 'Remove a claim.',
+	.command('remove-hosts', 'Remove hosts.',
 		{
-			contract: {
-				description: 'TZP address.',
-				type: 'string',
-				demand: true,
-			},
-			claims: {
-				description: 'Comma seperated list of urls to claims',
+			hosts: {
+				description: 'Comma seperated list of hosts IDs',
 				type: 'array',
 				demand: true,
 			}
 		}
 	)
-	.command('get-claims', 'Get claims.',
+	.command('add-admins', 'Add admins.',
+		{
+			hosts: {
+				description: 'Comma seperated list of admin PKHs',
+				type: 'array',
+				demand: true,
+			}
+		}
+	)
+	.command('remove-admins', 'Remove admins.',
+		{
+			hosts: {
+				description: 'Comma seperated list of admins PKH',
+				type: 'array',
+				demand: true,
+			}
+		}
+	)
+	.command('get-state', 'Get orbit state.',
 		{
 			contract: {
-				description: 'TPP address.',
+				description: 'orbit address.',
 				type: 'string',
 				demand: false,
 			},
-			subject: {
-				description: 'TPP Subject address.',
-				type: 'string',
-				demand: false,
-			}
-		}
-	)
-	.command('get-subject', 'Get the subject for a Tezos Public Profile smart contract.',
-		{
-			contract: {
-				description: 'TPP address.',
-				type: 'string',
-				demand: true,
-			}
-		}
-	)
-	.command('resolve-tzp', 'Get the TZP address for a Tezos Wallet address.',
-		{
-			address: {
-				description: 'Tezos account address.',
-				type: 'string',
-				demand: true,
-			}
-		}
-	)
-	.command('resolve-claims', 'Get the TZP claims for a Tezos Wallet address.',
-		{
-			address: {
-				description: 'Tezos account address.',
-				type: 'string',
-				demand: true,
-			}
 		}
 	)
 	.option('url', {
@@ -115,25 +96,10 @@ const argv = yargs
 		type: 'string',
 		default: 'https://api.better-call.dev'
 	})
-	.option('kepler_base', {
-		alias: 'k',
-		description: 'Base url for kepler API server',
-		type: 'string',
-		default: 'https://localhost:8000'
-	})
 	.strict()
 	.help()
 	.alias('help', 'h')
 	.argv;
-
-async function resolveClaim(url) {
-	let res = await fetch(url);
-	if (!res.ok || res.status !== 200) {
-		throw new Error(`Error resolving claim url: ${url}, status text: ${res.statusText}`)
-	}
-
-	return await res.text();
-};
 
 function getClient() {
 	let signerOpts = {};
@@ -152,25 +118,11 @@ function getClient() {
 		keplerClient: new kepler.Kepler(
 			argv.kepler_base
 		),
-		hashContent: hashFunc,
 		nodeURL: argv.url || "https://mainnet-tezos.giganode.io",
-		signer: signerOpts,
-		validateType: async (c, t) => {
-			// Validate VC
-			switch (t) {
-				case "VerifiableCredential": {
-					let verifyResult = await DIDKit.verifyCredential(c, '{}');
-					let verifyJSON = JSON.parse(verifyResult);
-					if (verifyJSON.errors.length > 0) throw new Error(verifyJSON.errors.join(", "));
-					break;
-				}
-				default:
-					throw new Error(`Unknown ClaimType: ${t}`);
-			}
-		}
+		signer: signerOpts
 	};
 
-	return new lib.TZProfilesClient(clientOpts);
+	return new lib.ContractClient(clientOpts);
 }
 
 function getBCDOpts() {
@@ -179,11 +131,6 @@ function getBCDOpts() {
 		network: argv.network || "mainnet",
 		version: 1,
 	};
-}
-
-async function retrieve_tzp() {
-	let client = getClient();
-	return await client.retrieve(argv.address);
 }
 
 async function originate() {
@@ -237,4 +184,4 @@ async function run() {
 	}
 }
 
-run().then(() => {console.log("Exiting")});
+run().then(() => { console.log("Exiting") });
