@@ -67,6 +67,19 @@ interface OrbitStorage {
 	hosts: taquito.MichelsonMap<string, string[]>
 }
 
+interface ManifestJson {
+	admins: string[],
+	hosts: { [hostId: string]: string[] }
+}
+
+function jsonToStorage(json: ManifestJson): OrbitStorage {
+	return {
+		admins: json.admins ? json.admins : [],
+		// @ts-ignore
+		hosts: taquito.MichelsonMap.fromLiteral(json.hosts)
+	}
+}
+
 function defaultBCD(): BetterCallDevOpts {
 	return {
 		base: "https://api.better-call.dev",

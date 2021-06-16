@@ -9,18 +9,12 @@ const hashFunc = async (claimBody) => {
 }
 
 const argv = yargs
-	.command('originate', 'Deploy Tezos Public Profiles smart contract.', {
-		admins: {
-			description: 'Comma seperated list of initial orbit admins',
-			type: 'array',
+	.command('originate', 'Deploy Orbit Manifest smart contract.', {
+		manifest: {
+			description: 'File path to initial orbit manifest JSON file',
+			type: 'string',
 			demand: false,
-			default: [],
-		},
-		hosts: {
-			description: 'Comma seperated list of initial orbit hosts',
-			type: 'array',
-			demand: false,
-			default: [],
+			default: "",
 		}
 	})
 	.command('add-hosts', 'Add hosts.',
@@ -134,13 +128,11 @@ function getBCDOpts() {
 }
 
 async function originate() {
-	let client = getClient();
+	let manifest = argv.manifest.length === 0
+		? { admins: [], hosts: {} }
+		: lib.jsonToStorage(JSON.parse(fs.readFileSync(argv.manifest, 'utf8')));
 
-	let claimsList = argv.claims.map((claim) => {
-		return ["VerifiableCredential", claim];
-	});
-
-	return await client.originate(claimsList);
+	return await client.originate(manifest);
 }
 
 async function add_claims() {
