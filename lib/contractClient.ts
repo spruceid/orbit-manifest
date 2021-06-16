@@ -191,49 +191,17 @@ export class ContractClient {
 	// Retrieves the claimsList belonging to the given address, returns false if
 	// if the contract storage does not have a claims list or expected metadata
 	// throws an error in case of network issues.
-	private async retrieveAndScreenContract(contractAddress: string): Promise<Array<OrbitStorage> | false> {
+	private async retrieveAndScreenContract(contractAddress: string): Promise<OrbitStorage | false> {
 		let contract = await this.tezos.contract.at(contractAddress, tzip16.tzip16);
+		// TODO tzip16 -> orbitManifest
 		let views = await contract.tzip16().metadataViews();
-		let claims: Array<OrbitStorage> = await views.GetClaims().executeView()
-		let contents: Array<OrbitStorage> = [];
-		for (var claim in claims) {
-			contents.push({ children: [{ value: claims[claim]['0'] }, { value: claims[claim]['1'] }, { value: claims[claim]['2'] }] });
-		}
-		return contents;
+		return await views.GetOrbit().executeView()
 	}
 
-	// contentListFromStorage returns a set of claims for a given contract address
-	// storage returns an list of ContentTriples if found, false if not, and
-	// throws and error if the network fails
-	private async contentListFromStorage(claimList: Array<OrbitStorage>): Promise<ContentList<ContentType, Hash, Reference>> {
-		let tripleList: ContentList<ContentType, Hash, Reference> = [];
-		for (let i = 0, n = claimList.length; i < n; i++) {
-			let claim = claimList[i];
-			if (claim.children.length !== 3) {
-				throw new Error("Invalid claim, was not a triple");
-			}
-
-			tripleList.push(this.processTriple(claim.children));
-		}
-
-		return tripleList;
-	}
-
-	private async referenceToTriple(t: ContentType, r: Reference): Promise<ContentTriple<ContentType, Hash, Reference>> {
-		let c = await this.dereferenceContent(r);
-		await this.validateType(c, t);
-		let h = await this.hashContent(c);
-
-		return [r, h, t];
-	}
-
-	// retrieve finds a smart contract from it's owner's wallet address, returns a 
+	// retrieve finds a smart contract from it's owner's wallet address, returns a
 	// result including the contract address and valid / invalid claims if found, 
 	// false if not, or throws an error if the network fails
-	async retrieve(walletAddress: string): Promise<
-		ContentResult<Content, ContentType, Hash, Reference>
-		| false
-	> {
+	async retrieve(walletAddress: string): Promise<OrbitStorage | false> {
 		let prefix = this.bcdPrefix();
 		let searchRes = await axios.get(`${prefix}search?q=${walletAddress}&n=${this.bcd.network}&i=contract&f=manager`);
 		if (searchRes.status !== 200) {
@@ -245,36 +213,12 @@ export class ContractClient {
 			return false;
 		}
 
-		let items: Array<ContractStorageItem> = data.items;
-		let possibleAddresses: Array<string> = [];
-
-		for (let i = 0, n = items.length; i < n; i++) {
-			let item = items[i];
-			if (await this.validateItem(item)) {
-				possibleAddresses.push(item.value);
-			}
-		}
-
-		for (let i = 0, n = possibleAddresses.length; i < n; i++) {
-			let address = possibleAddresses[i];
-			let storage = await this.retrieveAndScreenContract(address);
-			if (storage) {
-				let cl = await this.contentListFromStorage(storage);
-				let [invalid, valid] = await this.processContentList(cl);
-				return {
-					address,
-					invalid,
-					valid
-				};
-			}
-		}
-
 		return false;
 	}
 
 	// originate creates a new smart contract from an optional, original set of 
 	// claims. returns the address of the created contract or throws an err
-	async originate(contentReferenceList: Array<[ContentType, Reference]>): Promise<string> {
+	async originate(manifest: OrbitStorage): Promise<string> {
 		if (!this.signer) {
 			throw new Error("Requires valid Signer options to be able to originate");
 		}
@@ -289,25 +233,10 @@ export class ContractClient {
 			throw new Error(`Cannot originate new smart contract, found existing smart contract at address ${prexisting} for wallet ${pkh}`);
 		}
 
-		let contentList: ContentList<ContentType, Hash, Reference> = [];
-		for (let i = 0, x = contentReferenceList.length; i < x; i++) {
-			let [t, r] = contentReferenceList[i];
-			let triple = await this.referenceToTriple(t, r);
-			contentList.push(triple);
-		}
-
-		const metadataBigMap = new taquito.MichelsonMap();
-		metadataBigMap.set("", tzip16.char2Bytes("https://tzprofiles.com/tzip016_metadata.json"));
-
 		let originationOp, contractAddress;
 		let args = {
 			code: contractCode,
-			storage: {
-				claims: contentList,
-				contract_type: this.contractType,
-				owner: pkh,
-				metadata: metadataBigMap,
-			},
+			storage: manifest,
 		};
 
 		if (this.signer.type === "wallet") {
@@ -345,74 +274,100 @@ export class ContractClient {
 	// addClaims takes a contractAddress and a list of pairs of contentType and references, 
 	// adds them to the contract with the addClaims entrypoint returns the hash of 
 	// the transaction
-	async addClaims(contractAddress: string, contentReferenceList: Array<[ContentType, Reference]>): Promise<string> {
+	async addHosts(contractAddress: string, hosts: Array<string>): Promise<string> {
 		if (!this.signer) {
-			throw new Error("Requires valid Signer options to be able to addClaims");
+			throw new Error("Requires valid Signer options to be able to addHosts");
 		}
 
 		if (!this.signerSet) {
 			await this.setSigner();
 		}
 
-		let contentList: ContentList<ContentType, Hash, Reference> = [];
-		for (let i = 0, x = contentReferenceList.length; i < x; i++) {
-			let [t, r] = contentReferenceList[i];
-			let triple = await this.referenceToTriple(t, r);
-			contentList.push(triple);
-		}
-
 		let contract = await this.getContract(contractAddress);
 
 		let entrypoints = Object.keys(contract.methods);
-		if (entrypoints.length == 1 && entrypoints.includes('default')) {
-			let op: any = await contract.methods.default(contentList, true).send();
-
-			await op.confirmation(CONFIRMATION_CHECKS);
-			return op.hash || op.opHash;
-		} else if (entrypoints.includes('addClaims')) {
-			let op: any = await contract.methods.addClaims(contentList).send();
+		if (entrypoints.length == 1 && entrypoints.includes('updateHosts')) {
+			let op: any = await contract.methods.updateHosts(hosts, true).send();
 
 			await op.confirmation(CONFIRMATION_CHECKS);
 			return op.hash || op.opHash;
 		} else {
-			throw new Error(`No entrypoint to add claim.`)
+			throw new Error(`No entrypoint to add hosts.`)
 		}
 	}
 
 	// removeClaims takes a contractAddress and a list of pairs of contentType 
 	// and references, removes the entries from the contract storage with the 
 	// removeClaims entrypoint and returns the hash of the transaction
-	async removeClaims(contractAddress: string, contentReferenceList: Array<[ContentType, Reference]>): Promise<string> {
+	async removeHosts(contractAddress: string, hosts: Array<string>): Promise<string> {
 		if (!this.signer) {
-			throw new Error("Requires valid Signer options to be able to removeClaims");
+			throw new Error("Requires valid Signer options to be able to removeHosts");
 		}
 
 		if (!this.signerSet) {
 			await this.setSigner();
 		}
 
-		let contentList: ContentList<ContentType, Hash, Reference> = [];
-		for (let i = 0, x = contentReferenceList.length; i < x; i++) {
-			let [t, r] = contentReferenceList[i];
-			let triple = await this.referenceToTriple(t, r);
-			contentList.push(triple);
+		let contract = await this.getContract(contractAddress);
+
+		let entrypoints = Object.keys(contract.methods);
+		if (entrypoints.length == 1 && entrypoints.includes('updateHosts')) {
+			let op: any = await contract.methods.updateHosts(hosts, false).send();
+
+			await op.confirmation(CONFIRMATION_CHECKS);
+			return op.hash || op.opHash;
+		} else {
+			throw new Error(`No entrypoint to remove hosts.`)
+		}
+	}
+
+	// addClaims takes a contractAddress and a list of pairs of contentType and references,
+	// adds them to the contract with the addClaims entrypoint returns the hash of
+	// the transaction
+	async addAdmins(contractAddress: string, admins: Array<string>): Promise<string> {
+		if (!this.signer) {
+			throw new Error("Requires valid Signer options to be able to addAdmins");
+		}
+
+		if (!this.signerSet) {
+			await this.setSigner();
 		}
 
 		let contract = await this.getContract(contractAddress);
 
 		let entrypoints = Object.keys(contract.methods);
-		if (entrypoints.length == 1 && entrypoints.includes('default')) {
-			let op: any = await contract.methods.default(contentList, false).send();
-			await op.confirmation(CONFIRMATION_CHECKS);
+		if (entrypoints.length == 1 && entrypoints.includes('updateAdmins')) {
+			let op: any = await contract.methods.updateAdmins(admins, true).send();
 
-			return op.hash || op.opHash;
-		} else if (entrypoints.includes('removeClaims')) {
-			let op: any = await contract.methods.removeClaims(contentList).send();
 			await op.confirmation(CONFIRMATION_CHECKS);
-
 			return op.hash || op.opHash;
 		} else {
-			throw new Error(`No entrypoint to add claim.`)
+			throw new Error(`No entrypoint to add admins.`)
+		}
+	}
+
+	// removeClaims takes a contractAddress and a list of pairs of contentType
+	// and references, removes the entries from the contract storage with the
+	// removeClaims entrypoint and returns the hash of the transaction
+	async removeAdmins(contractAddress: string, admins: Array<string>): Promise<string> {
+		if (!this.signer) {
+			throw new Error("Requires valid Signer options to be able to removeAdmins");
+		}
+
+		if (!this.signerSet) {
+			await this.setSigner();
+		}
+
+		let contract = await this.getContract(contractAddress);
+
+		let entrypoints = Object.keys(contract.methods);
+		if (entrypoints.length == 1 && entrypoints.includes('updateAdmins')) {
+			let op: any = await contract.methods.updateAdmins(admins, false).send();
+
+			await op.confirmation(CONFIRMATION_CHECKS);
+			return op.hash || op.opHash;
+		} else {
+			throw new Error(`No entrypoint to remove admins.`)
 		}
 	}
 }

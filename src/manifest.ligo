@@ -1,4 +1,4 @@
-#import "Orbit.ligo" "Orbit"
+#import "orbit.ligo" "Orbit"
 
 type admin_update is record
   admins: set (address);

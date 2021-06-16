@@ -1,4 +1,4 @@
-export const contract = `{ parameter
+{ parameter
     (or (pair %updateAdmins (set %admins address) (bool %insert))
         (pair %updateHosts (map %hosts string (set string)) (bool %insert))) ;
   storage (pair (big_map %admins address unit) (big_map %hosts string (set string))) ;
@@ -54,4 +54,5 @@ export const contract = `{ parameter
                        PAIR } } ;
               NIL operation ;
               PAIR }
-            { DROP 2 ; PUSH string "Access Denied, source is not admin" ; FAILWITH } } }`;
+            { DROP 2 ; PUSH string "Access Denied, source is not admin" ; FAILWITH } } }
+
