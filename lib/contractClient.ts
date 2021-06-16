@@ -65,7 +65,7 @@ export interface BetterCallDevOpts {
 
 interface OrbitStorage {
 	admins: string[],
-	hosts: string[]
+	hosts: taquito.MichelsonMap<string, string[]>
 }
 
 function defaultBCD(): BetterCallDevOpts {
@@ -218,7 +218,7 @@ export class ContractClient {
 
 	// originate creates a new smart contract from an optional, original set of 
 	// claims. returns the address of the created contract or throws an err
-	async originate(manifest: OrbitStorage): Promise<string> {
+	async originate(manifest: OrbitStorage = { admins: [], hosts: new taquito.MichelsonMap() }): Promise<string> {
 		if (!this.signer) {
 			throw new Error("Requires valid Signer options to be able to originate");
 		}
@@ -231,6 +231,10 @@ export class ContractClient {
 		let prexisting = await this.retrieve(pkh);
 		if (prexisting) {
 			throw new Error(`Cannot originate new smart contract, found existing smart contract at address ${prexisting} for wallet ${pkh}`);
+		}
+
+		if (manifest.admins.length === 0) {
+			manifest.admins.push(pkh)
 		}
 
 		let originationOp, contractAddress;
