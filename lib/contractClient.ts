@@ -3,7 +3,6 @@
 import { InMemorySigner, importKey } from "@taquito/signer";
 import * as taquito from "@taquito/taquito";
 import * as tzip16 from "@taquito/tzip16";
-import * as orbitManifest from "./contractAbstraction";
 import { contract as contractCode } from "./contract";
 import axios from "axios";
 import { ContractAbstraction, ContractProvider } from "@taquito/taquito";
