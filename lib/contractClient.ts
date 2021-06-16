@@ -1,9 +1,10 @@
 // TODO: Restore once the wallet can be properly typed.
 // import type { BeaconWallet } from "@taquito/beacon-wallet";
-import {InMemorySigner, importKey} from "@taquito/signer";
+import { InMemorySigner, importKey } from "@taquito/signer";
 import * as taquito from "@taquito/taquito";
 import * as tzip16 from "@taquito/tzip16";
-import {contract as contractCode} from "./contract";
+import * as orbitManifest from "./contractAbstraction";
+import { contract as contractCode } from "./contract";
 import axios from "axios";
 import { ContractAbstraction, ContractProvider } from "@taquito/taquito";
 
@@ -62,55 +63,9 @@ export interface BetterCallDevOpts {
 	version: BetterCallDevVersions,
 }
 
-export type ContentTriple<
-	ContentType,
-	Hash,
-	Reference,
-	> = [Reference, Hash, ContentType];
-
-export type ContentList<
-	ContentType,
-	Hash,
-	Reference,
-	> = Array<ContentTriple<ContentType, Hash, Reference>>;
-
-export type InvalidContent<
-	ContentType,
-	Hash,
-	Reference,
-	> = [Reference, Hash, ContentType, any, Error];
-
-export type ValidContent<
-	Content,
-	ContentType,
-	Reference
-	> = [Reference, Content, ContentType];
-
-export type ContentResult<
-	Content,
-	ContentType,
-	Hash,
-	Reference,
-	> = {
-		address: string,
-		invalid: Array<InvalidContent<ContentType, Hash, Reference>>,
-		valid: Array<ValidContent<Content, ContentType, Reference>>,
-	};
-
-interface ContentStorage {
-	children: [ContentChild, ContentChild, ContentChild]
-}
-
-interface ContentChild {
-	value: any
-}
-
-interface ContractStorageItem {
-	type: string,
-	value: string,
-	body: {
-		annotations: Array<string>
-	}
+interface OrbitStorage {
+	admins: string[],
+	hosts: string[]
 }
 
 function defaultBCD(): BetterCallDevOpts {
@@ -121,7 +76,7 @@ function defaultBCD(): BetterCallDevOpts {
 	}
 }
 
-export interface ContractClientOpts<Content, ContentType, Hash, Reference> {
+export interface ContractClientOpts {
 	// Defaults to:
 	// {
 	//     base: "https://api.better-call.dev",
@@ -135,47 +90,29 @@ export interface ContractClientOpts<Content, ContentType, Hash, Reference> {
 	// same owner.
 	contractType: string,
 
-	// dereferenceContent takes a reference from a content store triple and exchanges 
-	// it for the content, such as making an HTTP request or using a kepler client.
-	dereferenceContent: (r: Reference) => Promise<Content>,
-
-	// hashContent takes content and processes it into a hash that matches the
-	// second entry from the content triple, used to validate the claims match the content
-	hashContent: (c: Content) => Promise<Hash>,
-
 	// If read only, a Signer is un-needed, such as in the use-case of a search engine.
 	// Will cause some methods to fail.
 	signer: Signer | false,
 
 	// Tezos Node URL to use, such as https://mainnet-tezos.giganode.io
 	nodeURL: string,
-
-	// validateType takes a content, it's listed type, and throws an error
-	// if it is not validated. The invalid claims are seperated and err messages stored.
-	validateType: (c: Content, t: ContentType) => Promise<void>,
 }
 
-export class ContractClient<Content, ContentType, Hash, Reference> {
+export class ContractClient {
 	bcd: BetterCallDevOpts;
 	contractType: string;
-	dereferenceContent: (r: Reference) => Promise<Content>;
-	hashContent: (c: Content) => Promise<Hash>;
 	nodeURL: string;
 	signer: Signer | false;
 	signerSet: boolean;
 	tezos: taquito.TezosToolkit;
-	validateType: (c: Content, t: ContentType) => Promise<void>;
 
-	constructor(opts: ContractClientOpts<Content, ContentType, Hash, Reference>) {
+	constructor(opts: ContractClientOpts) {
 		this.bcd = opts.betterCallDevConfig || defaultBCD();
 		this.contractType = opts.contractType;
-		this.dereferenceContent = opts.dereferenceContent;
-		this.hashContent = opts.hashContent;
 		this.nodeURL = opts.nodeURL;
 		this.signer = opts.signer;
 		this.tezos = new taquito.TezosToolkit(this.nodeURL);
 		this.tezos.addExtension(new tzip16.Tzip16Module());
-		this.validateType = opts.validateType;
 
 		// Lack of async constructor causes some special handling of setting the signer.
 		if (this.signer) {
@@ -251,84 +188,16 @@ export class ContractClient<Content, ContentType, Hash, Reference> {
 		return `${this.bcd.base}${this.trailingSlash(this.bcd.base)}v${this.bcd.version}/`
 	}
 
-	private processTriple(claimChildren: [ContentChild, ContentChild, ContentChild]): ContentTriple<ContentType, Hash, Reference> {
-		let [rc, hc, tc] = claimChildren;
-		let r = rc.value as Reference;
-		let h = hc.value as Hash;
-		let t = tc.value as ContentType;
-
-		return [r, h, t];
-	}
-
-	private async processContentList(contentList: ContentList<ContentType, Hash, Reference>):
-		Promise<
-			[
-				Array<InvalidContent<ContentType, Hash, Reference>>,
-				Array<ValidContent<Content, ContentType, Reference>>
-			]> {
-		let invalid: Array<InvalidContent<ContentType, Hash, Reference>> = [];
-		let valid: Array<ValidContent<Content, ContentType, Reference>> = [];
-		for (let i = 0, n = contentList.length; i < n; i++) {
-			let [reference, hash, contentType] = contentList[i];
-			let content: Content;
-
-			try {
-				content = await this.dereferenceContent(reference);
-			} catch (err) {
-				invalid.push([reference, hash, contentType, null, err]);
-				continue;
-			}
-
-			try {
-				await this.validateType(content, contentType);
-			} catch (err) {
-				invalid.push([reference, hash, contentType, content, err]);
-				continue;
-			}
-
-			try {
-				let h = await this.hashContent(content);
-				if (h !== hash) throw new Error("Hashes do not match");
-			} catch (err) {
-				invalid.push([reference, hash, contentType, content, err]);
-				continue;
-			}
-
-			valid.push([reference, content, contentType]);
-		}
-
-		return [invalid, valid];
-	}
-
-	private async validateItem(item: ContractStorageItem): Promise<boolean> {
-		if (!(
-			item?.type &&
-			(item.type === "contract" || item.type === "contracts") &&
-			item?.value
-		)) {
-			return false;
-		}
-		try {
-			const contract = await this.tezos.contract.at(item.value, tzip16.tzip16);
-			const metadata = await contract.tzip16().getMetadata();
-			if (metadata.metadata.interfaces.includes("TZIP-023")) {
-				return true;
-			}
-		} catch (_) {
-			return false;
-		}
-	}
-
 	// Retrieves the claimsList belonging to the given address, returns false if
 	// if the contract storage does not have a claims list or expected metadata
 	// throws an error in case of network issues.
-	private async retrieveAndScreenContract(contractAddress: string): Promise<Array<ContentStorage> | false> {
+	private async retrieveAndScreenContract(contractAddress: string): Promise<Array<OrbitStorage> | false> {
 		let contract = await this.tezos.contract.at(contractAddress, tzip16.tzip16);
 		let views = await contract.tzip16().metadataViews();
-		let claims: Array<ContentStorage> = await views.GetClaims().executeView()
-		let contents: Array<ContentStorage> = [];
+		let claims: Array<OrbitStorage> = await views.GetClaims().executeView()
+		let contents: Array<OrbitStorage> = [];
 		for (var claim in claims) {
-			contents.push({children: [{value: claims[claim]['0']}, {value: claims[claim]['1']}, {value: claims[claim]['2']}]});
+			contents.push({ children: [{ value: claims[claim]['0'] }, { value: claims[claim]['1'] }, { value: claims[claim]['2'] }] });
 		}
 		return contents;
 	}
@@ -336,7 +205,7 @@ export class ContractClient<Content, ContentType, Hash, Reference> {
 	// contentListFromStorage returns a set of claims for a given contract address
 	// storage returns an list of ContentTriples if found, false if not, and
 	// throws and error if the network fails
-	private async contentListFromStorage(claimList: Array<ContentStorage>): Promise<ContentList<ContentType, Hash, Reference>> {
+	private async contentListFromStorage(claimList: Array<OrbitStorage>): Promise<ContentList<ContentType, Hash, Reference>> {
 		let tripleList: ContentList<ContentType, Hash, Reference> = [];
 		for (let i = 0, n = claimList.length; i < n; i++) {
 			let claim = claimList[i];
@@ -371,7 +240,7 @@ export class ContractClient<Content, ContentType, Hash, Reference> {
 			throw new Error(`Failed in explorer request: ${searchRes.statusText}`);
 		}
 
-		let {data} = searchRes;
+		let { data } = searchRes;
 		if (data.count == 0) {
 			return false;
 		}
