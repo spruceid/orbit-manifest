@@ -165,7 +165,7 @@ export class ContractClient {
 		}
 	}
 
-	private async getPKH(): Promise<string> {
+	async getPKH(): Promise<string> {
 		if (!this.signer) {
 			throw new Error("Requires valid Signer options to be able to create PKH")
 		}
@@ -287,8 +287,8 @@ export class ContractClient {
 		}
 	}
 
-	// addClaims takes a contractAddress and a list of pairs of contentType and references, 
-	// adds them to the contract with the addClaims entrypoint returns the hash of 
+	// addHosts takes a contractAddress and a list of host IDs,
+	// adds them to the contract with the addHosts entrypoint returns the hash of
 	// the transaction
 	async addHosts(contractAddress: string, hosts: Array<string>): Promise<string> {
 		if (!this.signer) {
@@ -312,8 +312,8 @@ export class ContractClient {
 		}
 	}
 
-	// removeClaims takes a contractAddress and a list of pairs of contentType 
-	// and references, removes the entries from the contract storage with the 
+	// removeHosts takes a contractAddress and a list of host IDs,
+	// removes the entries from the contract storage with the
 	// removeClaims entrypoint and returns the hash of the transaction
 	async removeHosts(contractAddress: string, hosts: Array<string>): Promise<string> {
 		if (!this.signer) {
@@ -337,7 +337,7 @@ export class ContractClient {
 		}
 	}
 
-	// addClaims takes a contractAddress and a list of pairs of contentType and references,
+	// addAdmins takes a contractAddress and a list of admin PKHs,
 	// adds them to the contract with the addClaims entrypoint returns the hash of
 	// the transaction
 	async addAdmins(contractAddress: string, admins: Array<string>): Promise<string> {
@@ -362,8 +362,8 @@ export class ContractClient {
 		}
 	}
 
-	// removeClaims takes a contractAddress and a list of pairs of contentType
-	// and references, removes the entries from the contract storage with the
+	// removeAdmins takes a contractAddress and a list of admin PKHs,
+	// removes the entries from the contract storage with the
 	// removeClaims entrypoint and returns the hash of the transaction
 	async removeAdmins(contractAddress: string, admins: Array<string>): Promise<string> {
 		if (!this.signer) {

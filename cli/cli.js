@@ -129,7 +129,7 @@ function getBCDOpts() {
 
 async function originate() {
 	let manifest = argv.manifest.length === 0
-		? { admins: [], hosts: {} }
+		? { admins: [await client.getPKH()], hosts: {} }
 		: lib.jsonToStorage(JSON.parse(fs.readFileSync(argv.manifest, 'utf8')));
 
 	return await client.originate(manifest);
