@@ -63,7 +63,7 @@ export interface BetterCallDevOpts {
 }
 
 interface OrbitStorage {
-	admins: string[],
+	admins: taquito.MichelsonMap<string, null>,
 	hosts: taquito.MichelsonMap<string, string[]>
 }
 
@@ -72,9 +72,10 @@ interface ManifestJson {
 	hosts: { [hostId: string]: string[] }
 }
 
-function jsonToStorage(json: ManifestJson): OrbitStorage {
+export function jsonToStorage(json: ManifestJson): OrbitStorage {
 	return {
-		admins: json.admins ? json.admins : [],
+		// @ts-ignore
+		admins: taquito.MichelsonMap.fromLiteral(json.admins ? json.admins.reduce((acc, admin) => ({ [admin]: null, ...acc }), {}) : {}),
 		// @ts-ignore
 		hosts: taquito.MichelsonMap.fromLiteral(json.hosts)
 	}
@@ -108,6 +109,8 @@ export interface ContractClientOpts {
 
 	// Tezos Node URL to use, such as https://mainnet-tezos.giganode.io
 	nodeURL: string,
+
+	contractAddress: string
 }
 
 export class ContractClient {
@@ -117,6 +120,7 @@ export class ContractClient {
 	signer: Signer | false;
 	signerSet: boolean;
 	tezos: taquito.TezosToolkit;
+	address: string;
 
 	constructor(opts: ContractClientOpts) {
 		this.bcd = opts.betterCallDevConfig || defaultBCD();
@@ -125,6 +129,7 @@ export class ContractClient {
 		this.signer = opts.signer;
 		this.tezos = new taquito.TezosToolkit(this.nodeURL);
 		this.tezos.addExtension(new tzip16.Tzip16Module());
+		this.address = opts.contractAddress;
 
 		// Lack of async constructor causes some special handling of setting the signer.
 		if (this.signer) {
@@ -204,33 +209,15 @@ export class ContractClient {
 	// if the contract storage does not have a claims list or expected metadata
 	// throws an error in case of network issues.
 	private async retrieveAndScreenContract(contractAddress: string): Promise<OrbitStorage | false> {
-		let contract = await this.tezos.contract.at(contractAddress, tzip16.tzip16);
-		// TODO tzip16 -> orbitManifest
-		let views = await contract.tzip16().metadataViews();
-		return await views.GetOrbit().executeView()
-	}
-
-	// retrieve finds a smart contract from it's owner's wallet address, returns a
-	// result including the contract address and valid / invalid claims if found, 
-	// false if not, or throws an error if the network fails
-	async retrieve(walletAddress: string): Promise<OrbitStorage | false> {
-		let prefix = this.bcdPrefix();
-		let searchRes = await axios.get(`${prefix}search?q=${walletAddress}&n=${this.bcd.network}&i=contract&f=manager`);
-		if (searchRes.status !== 200) {
-			throw new Error(`Failed in explorer request: ${searchRes.statusText}`);
-		}
-
-		let { data } = searchRes;
-		if (data.count == 0) {
-			return false;
-		}
-
+		let contract = await this.tezos.contract.at(contractAddress);
+		let storage = await contract.storage();
 		return false;
 	}
 
 	// originate creates a new smart contract from an optional, original set of 
 	// claims. returns the address of the created contract or throws an err
-	async originate(manifest: OrbitStorage = { admins: [], hosts: new taquito.MichelsonMap() }): Promise<string> {
+	async originate(manifest: ManifestJson = { admins: [], hosts: {} }): Promise<string> {
+		console.log(manifest)
 		if (!this.signer) {
 			throw new Error("Requires valid Signer options to be able to originate");
 		}
@@ -240,10 +227,6 @@ export class ContractClient {
 		}
 
 		let pkh = await this.getPKH();
-		let prexisting = await this.retrieve(pkh);
-		if (prexisting) {
-			throw new Error(`Cannot originate new smart contract, found existing smart contract at address ${prexisting} for wallet ${pkh}`);
-		}
 
 		if (manifest.admins.length === 0) {
 			manifest.admins.push(pkh)
@@ -252,7 +235,7 @@ export class ContractClient {
 		let originationOp, contractAddress;
 		let args = {
 			code: contractCode,
-			storage: manifest,
+			storage: jsonToStorage(manifest),
 		};
 
 		if (this.signer.type === "wallet") {

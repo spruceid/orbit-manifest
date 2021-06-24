@@ -19,6 +19,11 @@ const argv = yargs
 	})
 	.command('add-hosts', 'Add hosts.',
 		{
+			contract: {
+				description: 'Contract Address',
+				type: 'string',
+				demand: true
+			},
 			hosts: {
 				description: 'Comma seperated list of hosts IDs',
 				type: 'array',
@@ -28,6 +33,11 @@ const argv = yargs
 	)
 	.command('remove-hosts', 'Remove hosts.',
 		{
+			contract: {
+				description: 'Contract Address',
+				type: 'string',
+				demand: true
+			},
 			hosts: {
 				description: 'Comma seperated list of hosts IDs',
 				type: 'array',
@@ -37,7 +47,12 @@ const argv = yargs
 	)
 	.command('add-admins', 'Add admins.',
 		{
-			hosts: {
+			contract: {
+				description: 'Contract Address',
+				type: 'string',
+				demand: true
+			},
+			admins: {
 				description: 'Comma seperated list of admin PKHs',
 				type: 'array',
 				demand: true,
@@ -46,8 +61,13 @@ const argv = yargs
 	)
 	.command('remove-admins', 'Remove admins.',
 		{
-			hosts: {
-				description: 'Comma seperated list of admins PKH',
+			contract: {
+				description: 'Contract Address',
+				type: 'string',
+				demand: true
+			},
+			admins: {
+				description: 'Comma seperated list of admin PKH',
 				type: 'array',
 				demand: true,
 			}
@@ -56,9 +76,9 @@ const argv = yargs
 	.command('get-state', 'Get orbit state.',
 		{
 			contract: {
-				description: 'orbit address.',
+				description: 'Contract Address',
 				type: 'string',
-				demand: false,
+				demand: true
 			},
 		}
 	)
@@ -109,12 +129,13 @@ function getClient() {
 
 	let clientOpts = {
 		betterCallDevConfig: getBCDOpts(),
-		keplerClient: new kepler.Kepler(
-			argv.kepler_base
-		),
 		nodeURL: argv.url || "https://mainnet-tezos.giganode.io",
 		signer: signerOpts
 	};
+
+	if (argv.contract) {
+		clientOpts.contractAddress = argv.address
+	}
 
 	return new lib.ContractClient(clientOpts);
 }
@@ -128,9 +149,10 @@ function getBCDOpts() {
 }
 
 async function originate() {
+	let client = getClient();
 	let manifest = argv.manifest.length === 0
 		? { admins: [await client.getPKH()], hosts: {} }
-		: lib.jsonToStorage(JSON.parse(fs.readFileSync(argv.manifest, 'utf8')));
+		: JSON.parse(fs.readFileSync(argv.manifest, 'utf8'));
 
 	return await client.originate(manifest);
 }
