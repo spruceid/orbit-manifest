@@ -300,7 +300,7 @@ export class ContractClient {
 
 		let entrypoints = Object.keys(contract.methods);
 		if (entrypoints.includes('updateHosts')) {
-			let op: any = await contract.methods.updateHosts(taquito.MichelsonMap.fromLiteral(hosts), true).send();
+			let op: any = await contract.methods.main({ hosts_add: taquito.MichelsonMap.fromLiteral(hosts) }, true).send();
 
 			await op.confirmation(CONFIRMATION_CHECKS);
 			return op.hash || op.opHash;
@@ -325,7 +325,7 @@ export class ContractClient {
 
 		let entrypoints = Object.keys(contract.methods);
 		if (entrypoints.includes('updateHosts')) {
-			let op: any = await contract.methods.updateHosts(hosts, false).send();
+			let op: any = await contract.methods.main({ hosts_remove: hosts }, false).send();
 
 			await op.confirmation(CONFIRMATION_CHECKS);
 			return op.hash || op.opHash;
@@ -350,7 +350,7 @@ export class ContractClient {
 
 		let entrypoints = Object.keys(contract.methods);
 		if (entrypoints.includes('updateAdmins')) {
-			let op: any = await contract.methods.updateAdmins(admins, true).send();
+			let op: any = await contract.methods.main({ admins_add: admins }, true).send();
 
 			await op.confirmation(CONFIRMATION_CHECKS);
 			return op.hash || op.opHash;
@@ -375,7 +375,7 @@ export class ContractClient {
 
 		let entrypoints = Object.keys(contract.methods);
 		if (entrypoints.includes('updateAdmins')) {
-			let op: any = await contract.methods.updateAdmins(admins, false).send();
+			let op: any = await contract.methods.updateAdmins({ admins_remove: admins }, false).send();
 
 			await op.confirmation(CONFIRMATION_CHECKS);
 			return op.hash || op.opHash;
@@ -400,7 +400,7 @@ export class ContractClient {
 
 		let entrypoints = Object.keys(contract.methods);
 		if (entrypoints.includes('updateReaders')) {
-			let op: any = await contract.methods.updateReaders(readers, true).send();
+			let op: any = await contract.methods.updateReaders({ readers_add: readers }, true).send();
 
 			await op.confirmation(CONFIRMATION_CHECKS);
 			return op.hash || op.opHash;
@@ -425,7 +425,7 @@ export class ContractClient {
 
 		let entrypoints = Object.keys(contract.methods);
 		if (entrypoints.includes('updateReaders')) {
-			let op: any = await contract.methods.updateReaders(readers, false).send();
+			let op: any = await contract.methods.main({ readers_remove: readers }, false).send();
 
 			await op.confirmation(CONFIRMATION_CHECKS);
 			return op.hash || op.opHash;

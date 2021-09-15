@@ -34,10 +34,10 @@ function add_hosts (const o : state; const hosts : host_map) : state is
     o.hosts
   )]
 
-function remove_hosts (const o : state; const hosts : host_map) : state is
-  o with record[hosts = Map.fold(
+function remove_hosts (const o : state; const hosts : set (string)) : state is
+  o with record[hosts = Set.fold(
     // remove the kv pair from orbit hosts
-    (function (const acc : host_big_map; const h : string * set (string)) : host_big_map is Big_map.update(h.0, (None : option (set (string))), acc)),
+    (function (const acc : host_big_map; const h : string) : host_big_map is Big_map.update(h, (None : option (set (string))), acc)),
     // iter with
     hosts,
     // start with existing hosts

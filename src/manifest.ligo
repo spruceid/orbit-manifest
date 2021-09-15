@@ -1,37 +1,61 @@
 #import "orbit.ligo" "Orbit"
 
-type admin_update is record
-  admins: set (address);
-  insert: bool;
+type manifest_update is record
+  admins_add: option (set (address));
+  admins_remove: option (set (address));
+  hosts_add: option (Orbit.host_map);
+  hosts_remove: option (set (string));
+  readers_add: option (set (string));
+  readers_remove: option (set (string));
+  writers_add: option (set (string));
+  writers_remove: option (set (string));
 end
-
-type host_update is record
-  // we must use a non-bigmap here so we can iterate over it
-  hosts: Orbit.host_map;
-  insert: bool;
-end
-
-// variant defining pseudo multi-entrypoint actions
-type action is
-| UpdateAdmins of admin_update
-| UpdateHosts of host_update
 
 type storage is Orbit.state
 
 type return is list (operation) * storage
 
-function update_admins (const o : storage; const u : admin_update) : storage is
-  if u.insert then Orbit.add_admins(o, u.admins) else Orbit.remove_admins(o, u.admins)
+function update_manifest (var o : storage; const u: manifest_update) : storage is
+  block {
+    // remove
+    case u.admins_remove of
+      | Some (a) -> o := Orbit.remove_admins (o, a)
+      | None -> skip
+    end;
+    case u.hosts_remove of
+      | Some (h) -> o := Orbit.remove_hosts (o, h)
+      | None -> skip
+    end;
+    case u.readers_remove of
+      | Some (a) -> o := Orbit.remove_readers (o, a)
+      | None -> skip
+    end;
+    case u.writers_remove of
+      | Some (a) -> o := Orbit.remove_writers (o, a)
+      | None -> skip
+    end;
 
-function update_hosts (const o : storage; const u : host_update) : storage is
-  if u.insert then Orbit.set_hosts (o, u.hosts) else Orbit.remove_hosts (o, u.hosts)
+    // insert
+    case u.admins_add of
+      | Some (a) -> o := Orbit.add_admins (o, a)
+      | None -> skip
+    end;
+    case u.hosts_add of
+      | Some (h) -> o := Orbit.add_hosts (o, h)
+      | None -> skip
+    end;
+    case u.readers_add of
+      | Some (a) -> o := Orbit.add_readers (o, a)
+      | None -> skip
+    end;
+    case u.writers_add of
+      | Some (a) -> o := Orbit.add_writers (o, a)
+      | None -> skip
+    end;
+  } with o
 
-function main (const a : action ; const s : storage) : return is
+function main (const a : manifest_update ; const s : storage) : return is
    if Big_map.find_opt(Tezos.source, s.admins) = Some(Unit) then
-    ((nil : list(operation)),
-      case a of
-      | UpdateAdmins (n) -> update_admins (s, n)
-      | UpdateHosts (n) -> update_hosts (s, n)
-    end)
+    ((nil : list(operation)), update_manifest(s, a))
   else
     failwith("Access Denied, source is not admin")
