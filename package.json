@@ -6,7 +6,7 @@
   "devDependencies": {
     "ganache-cli": "6.12.0-tezos.0"
   },
-  "main": "dist/contractaClient.js",
+  "main": "dist/contractClient.js",
   "types": "dist/contractClient.d.ts",
  "scripts": {
     "build": "tsc -p .",

@@ -1,13 +1,12 @@
-# Tezos Profiles Smart Contract Registry
+# Tezos Orbit Manifest Contract
 
-This smart-contract is a registry of personal claims (meaning every user has to
-originate it).
+This smart-contract is an implementation of a Kepler Orbit Manifest using the Tezos blockchain. As such, it provides a decentralised root of control over a [Kepler Orbit's](https://github.com/spruceid/kepler) authorization policy.
 
 ## Local Environment
 Requires [Docker](https://www.docker.com/get-started).
 
 For development purposes, a full-fledged local environment is provided. It
-contains a sandbox Tezos node, better-call.dev API, and the likes. To use it:
+contains a sandbox Tezos node, TzKT API, and the likes. To use it:
 ```bash
 docker-compose -f bcd-sandbox.yml up -d
 ```
@@ -28,7 +27,7 @@ npm i
 ### Usage
 Deploy with tezos blockchain via the CLI
 ```bash
-node cli/cli.js originate --secret <secret> --url <local node or mainnet url>
+node cli/cli.js originate <manifest> --secret <secret> --url <local node or mainnet url>
 ```
 
 To see all possible usages and parameters, you can refer to the CLI's help:
@@ -37,13 +36,12 @@ $ node cli/cli.js --help
 cli.js [command]
 
 Commands:
-  cli.js originate     Deploy Tezos Public Profiles smart contract.
-  cli.js add-claim     Add a claim.
-  cli.js remove-claim  Remove a claim.
-  cli.js get-claims    Get claims.
-  cli.js get-subject   Get the subject for a Tezos Public Profile smart
-                       contract.
-  cli.js resolve-tpp   Get the TPP for a Tezos address.
+  cli.js originate      Deploy Orbit Manifest smart contract.
+  cli.js add-host       Add host.
+  cli.js remove-hosts   Remove hosts.
+  cli.js add-admins     Add admins.
+  cli.js remove-admins  Remove admins.
+  cli.js read           Read orbit state.
 
 Options:
       --version          Show version number                           [boolean]
@@ -52,9 +50,9 @@ Options:
   -n, --network          Tezos network.            [string] [default: "mainnet"]
   -f, --faucet_key_file  Path to a faucet key JSON file.                [string]
   -s, --secret           Secret key.                                    [string]
-  -b, --bcd_url          better-call.dev API endpoint
-                              [string] [default: "https://api.better-call.dev/"]
-  -h, --help             Show help                                     [boolean]
+  -b, --tzkt_base        Base url for better-call.dev API endpoints
+                               [string] [default: "https://api.better-call.dev"]
+  -h, --help             Show help 
 ```
 
 ## SDK

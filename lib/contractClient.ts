@@ -46,21 +46,8 @@ export interface KeySigner {
 // on behalf of a wallet
 export type Signer = WalletSigner | SecretSigner | KeySigner;
 
-export type BetterCallDevVersions = 1;
-export type BetterCallDevNetworks = 'mainnet' | 'delphinet' | 'edonet' | 'florencenet' | 'sandboxnet';
-
-// Configurable Better Call Dev to allow local development.
-// Defaults to:
-// {
-//     base: "https://api.better-call.dev",
-//     network: "mainnet",
-//     version: 1
-// }
-export interface BetterCallDevOpts {
-	base: string,
-	network: BetterCallDevNetworks,
-	version: BetterCallDevVersions,
-}
+// Base URL for TzKT, defaults to https://api.tzkt.io.
+export type TzKTBase = string;
 
 interface OrbitStorage {
 	admins: taquito.MichelsonMap<string, null>,
@@ -81,22 +68,13 @@ export function jsonToStorage(json: ManifestJson): OrbitStorage {
 	}
 }
 
-function defaultBCD(): BetterCallDevOpts {
-	return {
-		base: "https://api.better-call.dev",
-		network: 'mainnet',
-		version: 1
-	}
+function defaultTzKT(): TzKTBase {
+	return "https://api.tzkt.io";
 }
 
 export interface ContractClientOpts {
-	// Defaults to:
-	// {
-	//     base: "https://api.better-call.dev",
-	//     network: "mainnet",
-	//     version: 1
-	// }
-	betterCallDevConfig?: BetterCallDevOpts,
+	// Defaults to: "https://api.tzkt.io";
+	tzktBase?: TzKTBase,
 
 	// An entry in the contract's metadata that allows it to be identified, used to 
 	// prevent duplicate contracts of the same type from being originated under the
@@ -109,27 +87,23 @@ export interface ContractClientOpts {
 
 	// Tezos Node URL to use, such as https://mainnet-tezos.giganode.io
 	nodeURL: string,
-
-	contractAddress: string
 }
 
 export class ContractClient {
-	bcd: BetterCallDevOpts;
+	tzktBase: TzKTBase;
 	contractType: string;
 	nodeURL: string;
 	signer: Signer | false;
 	signerSet: boolean;
 	tezos: taquito.TezosToolkit;
-	address: string;
 
 	constructor(opts: ContractClientOpts) {
-		this.bcd = opts.betterCallDevConfig || defaultBCD();
+		this.tzktBase = opts.tzktBase || defaultTzKT();
 		this.contractType = opts.contractType;
 		this.nodeURL = opts.nodeURL;
 		this.signer = opts.signer;
 		this.tezos = new taquito.TezosToolkit(this.nodeURL);
 		this.tezos.addExtension(new tzip16.Tzip16Module());
-		this.address = opts.contractAddress;
 
 		// Lack of async constructor causes some special handling of setting the signer.
 		if (this.signer) {
@@ -200,24 +174,37 @@ export class ContractClient {
 		return s[s.length - 1] === "/" ? "" : "/"
 	}
 
-	// Create a standard base URL for all future calls.
-	private bcdPrefix(): string {
-		return `${this.bcd.base}${this.trailingSlash(this.bcd.base)}v${this.bcd.version}/`
-	}
+	async readState(contractAddress: string): Promise<ManifestJson> {
+		let prefix = this.tzktBase;
 
-	// Retrieves the claimsList belonging to the given address, returns false if
-	// if the contract storage does not have a claims list or expected metadata
-	// throws an error in case of network issues.
-	private async retrieveAndScreenContract(contractAddress: string): Promise<OrbitStorage | false> {
 		let contract = await this.tezos.contract.at(contractAddress);
 		let storage = await contract.storage();
-		return false;
+
+		// @ts-ignore
+		const { admins: admins_bigmap, hosts: hosts_bigmap } = storage;
+		const adminSearch = await axios.get(`${prefix}/v1/bigmaps/${admins_bigmap.id}/keys`);
+		if (adminSearch.status !== 200) {
+			throw new Error(`Failed in explorer request: ${adminSearch.statusText}`);
+		}
+		const adminKeyList = adminSearch.data.filter(key => key.active);
+
+		const hostSearch = await axios.get(`${prefix}/v1/bigmaps/${hosts_bigmap.id}/keys`);
+		if (hostSearch.status !== 200) {
+			throw new Error(`Failed in explorer request: ${hostSearch.statusText}`);
+		}
+		const hostKeyList = hostSearch.data.filter(key => key.active);
+		return {
+			admins: adminKeyList.map(key => key.key),
+			hosts: hostKeyList.reduce((acc, key) => {
+				acc[key.key] = key.value;
+				return acc;
+			}, {})
+		}
 	}
 
-	// originate creates a new smart contract from an optional, original set of 
+	// originate creates a new smart contract from an optional, original set of
 	// claims. returns the address of the created contract or throws an err
 	async originate(manifest: ManifestJson = { admins: [], hosts: {} }): Promise<string> {
-		console.log(manifest)
 		if (!this.signer) {
 			throw new Error("Requires valid Signer options to be able to originate");
 		}
@@ -273,7 +260,7 @@ export class ContractClient {
 	// addHosts takes a contractAddress and a list of host IDs,
 	// adds them to the contract with the addHosts entrypoint returns the hash of
 	// the transaction
-	async addHosts(contractAddress: string, hosts: Array<string>): Promise<string> {
+	async addHosts(contractAddress: string, hosts: { [key: string]: string[] }): Promise<string> {
 		if (!this.signer) {
 			throw new Error("Requires valid Signer options to be able to addHosts");
 		}
@@ -285,8 +272,8 @@ export class ContractClient {
 		let contract = await this.getContract(contractAddress);
 
 		let entrypoints = Object.keys(contract.methods);
-		if (entrypoints.length == 1 && entrypoints.includes('updateHosts')) {
-			let op: any = await contract.methods.updateHosts(hosts, true).send();
+		if (entrypoints.includes('updateHosts')) {
+			let op: any = await contract.methods.updateHosts(taquito.MichelsonMap.fromLiteral(hosts), true).send();
 
 			await op.confirmation(CONFIRMATION_CHECKS);
 			return op.hash || op.opHash;
@@ -310,7 +297,7 @@ export class ContractClient {
 		let contract = await this.getContract(contractAddress);
 
 		let entrypoints = Object.keys(contract.methods);
-		if (entrypoints.length == 1 && entrypoints.includes('updateHosts')) {
+		if (entrypoints.includes('updateHosts')) {
 			let op: any = await contract.methods.updateHosts(hosts, false).send();
 
 			await op.confirmation(CONFIRMATION_CHECKS);
@@ -335,7 +322,7 @@ export class ContractClient {
 		let contract = await this.getContract(contractAddress);
 
 		let entrypoints = Object.keys(contract.methods);
-		if (entrypoints.length == 1 && entrypoints.includes('updateAdmins')) {
+		if (entrypoints.includes('updateAdmins')) {
 			let op: any = await contract.methods.updateAdmins(admins, true).send();
 
 			await op.confirmation(CONFIRMATION_CHECKS);
@@ -360,7 +347,7 @@ export class ContractClient {
 		let contract = await this.getContract(contractAddress);
 
 		let entrypoints = Object.keys(contract.methods);
-		if (entrypoints.length == 1 && entrypoints.includes('updateAdmins')) {
+		if (entrypoints.includes('updateAdmins')) {
 			let op: any = await contract.methods.updateAdmins(admins, false).send();
 
 			await op.confirmation(CONFIRMATION_CHECKS);

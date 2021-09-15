@@ -17,15 +17,20 @@ const argv = yargs
 			default: "",
 		}
 	})
-	.command('add-hosts', 'Add hosts.',
+	.command('add-host', 'Add host.',
 		{
 			contract: {
 				description: 'Contract Address',
 				type: 'string',
 				demand: true
 			},
-			hosts: {
-				description: 'Comma seperated list of hosts IDs',
+			host: {
+				description: 'Host ID',
+				type: 'string',
+				demand: true
+			},
+			addresses: {
+				description: 'Comma seperated list of hosts multiaddresses',
 				type: 'array',
 				demand: true,
 			}
@@ -73,7 +78,7 @@ const argv = yargs
 			}
 		}
 	)
-	.command('get-state', 'Get orbit state.',
+	.command('read', 'Read orbit state.',
 		{
 			contract: {
 				description: 'Contract Address',
@@ -104,7 +109,7 @@ const argv = yargs
 		description: 'Secret key.',
 		type: 'string',
 	})
-	.option('bcd_base', {
+	.option('tzkt_base', {
 		alias: 'b',
 		description: 'Base url for better-call.dev API endpoints',
 		type: 'string',
@@ -128,24 +133,16 @@ function getClient() {
 	}
 
 	let clientOpts = {
-		betterCallDevConfig: getBCDOpts(),
+		tzktBase: getTzktOpts(),
 		nodeURL: argv.url || "https://mainnet-tezos.giganode.io",
 		signer: signerOpts
 	};
 
-	if (argv.contract) {
-		clientOpts.contractAddress = argv.address
-	}
-
 	return new lib.ContractClient(clientOpts);
 }
 
-function getBCDOpts() {
-	return {
-		base: argv.bcd_base || "https://api.better-call.dev",
-		network: argv.network || "mainnet",
-		version: 1,
-	};
+function getTzktOpts() {
+	return argv.tzkt_base || "https://api.tzkt.io"
 }
 
 async function originate() {
@@ -157,22 +154,38 @@ async function originate() {
 	return await client.originate(manifest);
 }
 
-async function add_claims() {
+async function add_host() {
 	let client = getClient();
-	let claimsList = argv.claims.map((claim) => {
-		return ["VerifiableCredential", claim];
-	});
+	let hosts = { [argv.host]: argv.addresses };
+	console.log(hosts)
 
-	return await client.addClaims(argv.contract, claimsList)
+	return await client.addHosts(argv.contract, hosts)
 }
 
-async function remove_claims() {
+async function remove_hosts() {
 	let client = getClient();
-	let claimsList = argv.claims.map((claim) => {
-		return ["VerifiableCredential", claim];
-	});
+	let hosts = argv.hosts;
 
-	return await client.removeClaims(argv.contract, claimsList)
+	return await client.removeHosts(argv.contract, hosts)
+}
+
+async function add_admins() {
+	let client = getClient();
+	let admins = argv.admins;
+
+	return await client.addAdmins(argv.contract, admins)
+}
+
+async function remove_admins() {
+	let client = getClient();
+	let admins = argv.admins;
+
+	return await client.removeAdmins(argv.contract, admins)
+}
+
+async function read() {
+	let client = getClient();
+	return await client.readState(argv.contract)
 }
 
 async function run() {
@@ -180,15 +193,20 @@ async function run() {
 		if (argv._.includes('originate')) {
 			let contractAddress = await originate();
 			console.log(`Originated contract at address: ${contractAddress}`);
-		} else if (argv._.includes('add-claims')) {
-			let transaction = await add_claims();
-			console.log(`Add claims concluded in transaction: ${transaction}`);
-		} else if (argv._.includes('remove-claims')) {
-			let transaction = await remove_claims();
-			console.log(`Remove claims concluded in transaction: ${transaction}`);
-		} else if (argv._.includes('resolve-tzp')) {
-			let tzp = await retrieve_tzp();
-			console.log(`Wallet ${argv.address} owns contract:`);
+		} else if (argv._.includes('add-host')) {
+			let transaction = await add_host();
+			console.log(`Add hosts concluded in transaction: ${transaction}`);
+		} else if (argv._.includes('remove-hosts')) {
+			let transaction = await remove_hosts();
+			console.log(`Remove hosts concluded in transaction: ${transaction}`);
+		} else if (argv._.includes('add-admins')) {
+			let transaction = await add_admins();
+			console.log(`Add admins concluded in transaction: ${transaction}`);
+		} else if (argv._.includes('remove-admins')) {
+			let transaction = await remove_admins();
+			console.log(`Remove admins concluded in transaction: ${transaction}`);
+		} else if (argv._.includes('read')) {
+			let tzp = await read();
 			console.log(tzp);
 		} else {
 			throw new Error(`Unknown command`);
