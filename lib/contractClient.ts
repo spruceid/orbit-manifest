@@ -52,11 +52,15 @@ export type TzKTBase = string;
 interface OrbitStorage {
 	admins: taquito.MichelsonMap<string, null>,
 	hosts: taquito.MichelsonMap<string, string[]>
+	readers: taquito.MichelsonMap<string, null>,
+	writers: taquito.MichelsonMap<string, null>,
 }
 
 interface ManifestJson {
 	admins: string[],
 	hosts: { [hostId: string]: string[] }
+	readers: string[],
+	writers: string[],
 }
 
 export function jsonToStorage(json: ManifestJson): OrbitStorage {
@@ -180,31 +184,54 @@ export class ContractClient {
 		let contract = await this.tezos.contract.at(contractAddress);
 		let storage = await contract.storage();
 
-		// @ts-ignore
-		const { admins: admins_bigmap, hosts: hosts_bigmap } = storage;
+		const {
+			// @ts-ignore
+			admins: admins_bigmap,
+			// @ts-ignore
+			hosts: hosts_bigmap,
+			// @ts-ignore
+			readers: readers_bigmap,
+			// @ts-ignore
+			writers: writers_bigmap
+		} = storage;
 		const adminSearch = await axios.get(`${prefix}/v1/bigmaps/${admins_bigmap.id}/keys`);
 		if (adminSearch.status !== 200) {
 			throw new Error(`Failed in explorer request: ${adminSearch.statusText}`);
 		}
-		const adminKeyList = adminSearch.data.filter(key => key.active);
+		const admins = adminSearch.data.filter(key => key.active).map(key => key.key);
 
 		const hostSearch = await axios.get(`${prefix}/v1/bigmaps/${hosts_bigmap.id}/keys`);
 		if (hostSearch.status !== 200) {
 			throw new Error(`Failed in explorer request: ${hostSearch.statusText}`);
 		}
-		const hostKeyList = hostSearch.data.filter(key => key.active);
+		const hosts = hostSearch.data.filter(key => key.active).reduce((acc, key) => {
+			acc[key.key] = key.value;
+			return acc;
+		}, {});
+
+		const readerSearch = await axios.get(`${prefix}/v1/bigmaps/${readers_bigmap.id}/keys`);
+		if (readerSearch.status !== 200) {
+			throw new Error(`Failed in explorer request: ${readerSearch.statusText}`);
+		}
+		const readers = readerSearch.data.filter(key => key.active).map(key => key.key);
+
+		const writerSearch = await axios.get(`${prefix}/v1/bigmaps/${writers_bigmap.id}/keys`);
+		if (writerSearch.status !== 200) {
+			throw new Error(`Failed in explorer request: ${writerSearch.statusText}`);
+		}
+		const writers = adminSearch.data.filter(key => key.active).map(key => key.key);
+
 		return {
-			admins: adminKeyList.map(key => key.key),
-			hosts: hostKeyList.reduce((acc, key) => {
-				acc[key.key] = key.value;
-				return acc;
-			}, {})
+			admins,
+			hosts,
+			readers,
+			writers
 		}
 	}
 
 	// originate creates a new smart contract from an optional, original set of
 	// claims. returns the address of the created contract or throws an err
-	async originate(manifest: ManifestJson = { admins: [], hosts: {} }): Promise<string> {
+	async originate(manifest: ManifestJson = { admins: [], hosts: {}, readers: [], writers: [] }): Promise<string> {
 		if (!this.signer) {
 			throw new Error("Requires valid Signer options to be able to originate");
 		}
@@ -308,7 +335,7 @@ export class ContractClient {
 	}
 
 	// addAdmins takes a contractAddress and a list of admin PKHs,
-	// adds them to the contract with the addClaims entrypoint returns the hash of
+	// adds them to the contract with the addReaders entrypoint returns the hash of
 	// the transaction
 	async addAdmins(contractAddress: string, admins: Array<string>): Promise<string> {
 		if (!this.signer) {
@@ -334,7 +361,7 @@ export class ContractClient {
 
 	// removeAdmins takes a contractAddress and a list of admin PKHs,
 	// removes the entries from the contract storage with the
-	// removeClaims entrypoint and returns the hash of the transaction
+	// removeAdmins entrypoint and returns the hash of the transaction
 	async removeAdmins(contractAddress: string, admins: Array<string>): Promise<string> {
 		if (!this.signer) {
 			throw new Error("Requires valid Signer options to be able to removeAdmins");
@@ -354,6 +381,56 @@ export class ContractClient {
 			return op.hash || op.opHash;
 		} else {
 			throw new Error(`No entrypoint to remove admins.`)
+		}
+	}
+
+	// addReaders takes a contractAddress and a list of reader IDs,
+	// adds them to the contract with the addReaders entrypoint returns the hash of
+	// the transaction
+	async addReaders(contractAddress: string, readers: Array<string>): Promise<string> {
+		if (!this.signer) {
+			throw new Error("Requires valid Signer options to be able to addReaders");
+		}
+
+		if (!this.signerSet) {
+			await this.setSigner();
+		}
+
+		let contract = await this.getContract(contractAddress);
+
+		let entrypoints = Object.keys(contract.methods);
+		if (entrypoints.includes('updateReaders')) {
+			let op: any = await contract.methods.updateReaders(readers, true).send();
+
+			await op.confirmation(CONFIRMATION_CHECKS);
+			return op.hash || op.opHash;
+		} else {
+			throw new Error(`No entrypoint to add readers.`)
+		}
+	}
+
+	// removeReaders takes a contractAddress and a list of reader IDs,
+	// removes the entries from the contract storage with the
+	// removeReaders entrypoint and returns the hash of the transaction
+	async removeReaders(contractAddress: string, readers: Array<string>): Promise<string> {
+		if (!this.signer) {
+			throw new Error("Requires valid Signer options to be able to removeReaders");
+		}
+
+		if (!this.signerSet) {
+			await this.setSigner();
+		}
+
+		let contract = await this.getContract(contractAddress);
+
+		let entrypoints = Object.keys(contract.methods);
+		if (entrypoints.includes('updateReaders')) {
+			let op: any = await contract.methods.updateReaders(readers, false).send();
+
+			await op.confirmation(CONFIRMATION_CHECKS);
+			return op.hash || op.opHash;
+		} else {
+			throw new Error(`No entrypoint to remove readers.`)
 		}
 	}
 }

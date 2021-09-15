@@ -1,10 +1,13 @@
 type host_big_map is big_map (string, set (string))
 type host_map is map (string, set (string))
 type admin_set is big_map (address, unit)
+type delegator_set is big_map (string, unit)
 
 type state is record
   admins: admin_set;
   hosts: host_big_map;
+  readers: delegator_set;
+  writers: delegator_set;
 end
 
 function add_admins (const o : state; const admins : set (address)) : state is
@@ -21,7 +24,7 @@ function remove_admins (const o : state; const admins : set (address)) : state i
     o.admins
   )]
 
-function set_hosts (const o : state; const hosts : host_map) : state is
+function add_hosts (const o : state; const hosts : host_map) : state is
   o with record[hosts = Map.fold(
     // asign the kv pair to orbit hosts
     (function (const acc : host_big_map; const h : string * set (string)) : host_big_map is Big_map.update(h.0, Some (h.1), acc)),
@@ -39,4 +42,32 @@ function remove_hosts (const o : state; const hosts : host_map) : state is
     hosts,
     // start with existing hosts
     o.hosts
+  )]
+
+function add_readers (const o : state; const readers : set (string)) : state is
+  o with record [readers = Set.fold(
+    (function (const acc : delegator_set; const a : string ) : delegator_set is Big_map.update(a, Some (Unit), acc)),
+    readers,
+    o.readers
+  )]
+
+function remove_readers (const o : state; const readers : set (string)) : state is
+  o with record [readers = Set.fold(
+    (function (const acc : delegator_set; const a : string ) : delegator_set is Big_map.update(a, (None : option (unit)), acc)),
+    readers,
+    o.readers
+  )]
+
+function add_writers (const o : state; const writers : set (string)) : state is
+  o with record [writers = Set.fold(
+    (function (const acc : delegator_set; const a : string ) : delegator_set is Big_map.update(a, Some (Unit), acc)),
+    writers,
+    o.writers
+  )]
+
+function remove_writers (const o : state; const writers : set (string)) : state is
+  o with record [writers = Set.fold(
+    (function (const acc : delegator_set; const a : string ) : delegator_set is Big_map.update(a, (None : option (unit)), acc)),
+    writers,
+    o.writers
   )]
