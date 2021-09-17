@@ -55,7 +55,7 @@ function update_manifest (var o : storage; const u: manifest_update) : storage i
   } with o
 
 function main (const a : manifest_update ; const s : storage) : return is
-   if Big_map.find_opt(Tezos.source, s.admins) = Some(Unit) then
+   if Big_map.find_opt(Tezos.sender, s.admins) = Some(Unit) and Tezos.amount = 0 then
     ((nil : list(operation)), update_manifest(s, a))
   else
     failwith("Access Denied, source is not admin")

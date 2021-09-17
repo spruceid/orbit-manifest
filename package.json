@@ -1,6 +1,6 @@
 {
   "name": "orbit-manifest",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Tezos Smart Contract for orbit manifest management",
   "dependencies": {},
   "devDependencies": {
