@@ -5,10 +5,6 @@ type manifest_update is record
   admins_remove: option (set (address));
   hosts_add: option (Orbit.host_map);
   hosts_remove: option (set (string));
-  readers_add: option (set (string));
-  readers_remove: option (set (string));
-  writers_add: option (set (string));
-  writers_remove: option (set (string));
 end
 
 type storage is Orbit.state
@@ -26,14 +22,6 @@ function update_manifest (var o : storage; const u: manifest_update) : storage i
       | Some (h) -> o := Orbit.remove_hosts (o, h)
       | None -> skip
     end;
-    case u.readers_remove of
-      | Some (a) -> o := Orbit.remove_readers (o, a)
-      | None -> skip
-    end;
-    case u.writers_remove of
-      | Some (a) -> o := Orbit.remove_writers (o, a)
-      | None -> skip
-    end;
 
     // insert
     case u.admins_add of
@@ -42,14 +30,6 @@ function update_manifest (var o : storage; const u: manifest_update) : storage i
     end;
     case u.hosts_add of
       | Some (h) -> o := Orbit.add_hosts (o, h)
-      | None -> skip
-    end;
-    case u.readers_add of
-      | Some (a) -> o := Orbit.add_readers (o, a)
-      | None -> skip
-    end;
-    case u.writers_add of
-      | Some (a) -> o := Orbit.add_writers (o, a)
       | None -> skip
     end;
   } with o
